@@ -1,16 +1,24 @@
 local GRID_SIZE = 5
 local CELL_SIZE = 40
-local SHIP_COUNT = 3
 local SHIP_SIZES = {2, 3, 3}
+local SHIP_COUNT = #SHIP_SIZES
 
 local playerGrid, computerGrid
 local playerHits, computerHits
 local playerTurn
 local gameState
+local placingShipIndex
+local placingShipOrientation
+local sounds
 
 function love.load()
     love.window.setTitle("Sinking Ships")
     love.window.setMode(GRID_SIZE * CELL_SIZE * 2, GRID_SIZE * CELL_SIZE + 50)
+
+    sounds = {
+        hit = love.audio.newSource("hit.wav", "static"),
+        miss = love.audio.newSource("miss.wav", "static")
+    }
 
     resetGame()
 end
@@ -20,10 +28,11 @@ function resetGame()
     computerGrid = createGrid()
     playerHits = {}
     computerHits = {}
-    playerTurn = true
-    gameState = "playing"
+    playerTurn = false
+    gameState = "placing"
+    placingShipIndex = 1
+    placingShipOrientation = 0
 
-    placeShips(playerGrid, SHIP_SIZES)
     placeShips(computerGrid, SHIP_SIZES)
 end
 
@@ -44,7 +53,7 @@ function placeShips(grid, sizes)
         while not placed do
             local x = math.random(1, GRID_SIZE)
             local y = math.random(1, GRID_SIZE)
-            local orientation = math.random(0, 1) 
+            local orientation = math.random(0, 1)
             if canPlaceShip(grid, x, y, size, orientation) then
                 for i = 0, size - 1 do
                     if orientation == 0 then
@@ -76,13 +85,17 @@ end
 
 function love.draw()
     love.graphics.clear()
-    drawGrid(playerGrid, 0, "Player's Grid")
+    drawGrid(playerGrid, 0, "Player's Grid", gameState ~= "placing")
     drawGrid(computerGrid, GRID_SIZE * CELL_SIZE, "Computer's Grid", true)
 
     if gameState == "won" then
         love.graphics.print("You Won!", 10, GRID_SIZE * CELL_SIZE + 10)
     elseif gameState == "lost" then
         love.graphics.print("You Lost!", 10, GRID_SIZE * CELL_SIZE + 10)
+    elseif gameState == "placing" then
+        love.graphics.print("Place your ships", 10, GRID_SIZE * CELL_SIZE + 10)
+    else
+        love.graphics.print("Your turn!", 10, GRID_SIZE * CELL_SIZE + 10)
     end
 
     love.graphics.print("Press R to Reset", 10, GRID_SIZE * CELL_SIZE + 30)
@@ -112,19 +125,41 @@ function drawGrid(grid, offsetX, title, hidden)
 end
 
 function love.mousepressed(x, y, button, istouch, presses)
-    if button == 1 and playerTurn and gameState == "playing" then
-        local gridX, gridY = getGridCoordinates(x, y, GRID_SIZE * CELL_SIZE)
-        if gridX and gridY then
-            if computerGrid[gridX][gridY] == 1 then
-                computerGrid[gridX][gridY] = 2
-                table.insert(playerHits, {gridX, gridY})
-            else
-                computerGrid[gridX][gridY] = 3
+    if button == 1 then
+        if gameState == "placing" then
+            local gridX, gridY = getGridCoordinates(x, y, 0)
+            if gridX and gridY then
+                if canPlaceShip(playerGrid, gridX, gridY, SHIP_SIZES[placingShipIndex], placingShipOrientation) then
+                    for i = 0, SHIP_SIZES[placingShipIndex] - 1 do
+                        if placingShipOrientation == 0 then
+                            playerGrid[gridX + i][gridY] = 1
+                        else
+                            playerGrid[gridX][gridY + i] = 1
+                        end
+                    end
+                    placingShipIndex = placingShipIndex + 1
+                    if placingShipIndex > SHIP_COUNT then
+                        gameState = "playing"
+                        playerTurn = true
+                    end
+                end
             end
-            playerTurn = false
-            checkGameState()
-            if gameState == "playing" then
-                computerMove()
+        elseif gameState == "playing" and playerTurn then
+            local gridX, gridY = getGridCoordinates(x, y, GRID_SIZE * CELL_SIZE)
+            if gridX and gridY then
+                if computerGrid[gridX][gridY] == 1 then
+                    computerGrid[gridX][gridY] = 2
+                    table.insert(playerHits, {gridX, gridY})
+                    sounds.hit:play()
+                else
+                    computerGrid[gridX][gridY] = 3
+                    sounds.miss:play()
+                end
+                playerTurn = false
+                checkGameState()
+                if gameState == "playing" then
+                    computerMove()
+                end
             end
         end
     end
@@ -149,8 +184,10 @@ function computerMove()
     if playerGrid[gridX][gridY] == 1 then
         playerGrid[gridX][gridY] = 2
         table.insert(computerHits, {gridX, gridY})
+        sounds.hit:play()
     else
         playerGrid[gridX][gridY] = 3
+        sounds.miss:play()
     end
     playerTurn = true
     checkGameState()
@@ -167,5 +204,7 @@ end
 function love.keypressed(key)
     if key == "r" then
         resetGame()
+    elseif key == "space" and gameState == "placing" then
+        placingShipOrientation = 1 - placingShipOrientation
     end
 end
