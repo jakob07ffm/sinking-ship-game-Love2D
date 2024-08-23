@@ -10,19 +10,11 @@ local gameState
 local placingShipIndex
 local placingShipOrientation
 local playerScore, computerScore
-local sounds
 local hitAnimations, missAnimations
 
 function love.load()
     love.window.setTitle("Sinking Ships")
     love.window.setMode(GRID_SIZE * CELL_SIZE * 2, GRID_SIZE * CELL_SIZE + 100)
-
-    sounds = {
-        hit = love.audio.newSource("hit.wav", "static"),
-        miss = love.audio.newSource("miss.wav", "static"),
-        sunk = love.audio.newSource("sunk.wav", "static")
-    }
-
     resetGame()
 end
 
@@ -39,7 +31,6 @@ function resetGame()
     computerScore = {hits = 0, misses = 0, sunk = 0}
     hitAnimations = {}
     missAnimations = {}
-
     placeShips(computerGrid, SHIP_SIZES)
 end
 
@@ -106,7 +97,6 @@ function love.draw()
     end
 
     love.graphics.print("Press R to Reset", 10, GRID_SIZE * CELL_SIZE + 30)
-
     drawScores()
     drawAnimations()
 end
@@ -164,12 +154,10 @@ function love.mousepressed(x, y, button, istouch, presses)
                     table.insert(playerHits, {gridX, gridY})
                     playerScore.hits = playerScore.hits + 1
                     checkSunkShip(computerGrid, computerGrid[gridX][gridY].ship, playerScore)
-                    sounds.hit:play()
                     table.insert(hitAnimations, {x = gridX, y = gridY, time = 0})
                 else
                     computerGrid[gridX][gridY].status = 3
                     playerScore.misses = playerScore.misses + 1
-                    sounds.miss:play()
                     table.insert(missAnimations, {x = gridX, y = gridY, time = 0})
                 end
                 playerTurn = false
@@ -219,12 +207,10 @@ function computerMove()
         table.insert(computerHits, {gridX, gridY})
         computerScore.hits = computerScore.hits + 1
         checkSunkShip(playerGrid, playerGrid[gridX][gridY].ship, computerScore)
-        sounds.hit:play()
         table.insert(hitAnimations, {x = gridX, y = gridY, time = 0})
     else
         playerGrid[gridX][gridY].status = 3
         computerScore.misses = computerScore.misses + 1
-        sounds.miss:play()
         table.insert(missAnimations, {x = gridX, y = gridY, time = 0})
     end
     playerTurn = true
@@ -244,23 +230,81 @@ function checkSunkShip(grid, shipId, score)
     local sunk = true
     for i = 1, GRID_SIZE do
         for j = 1, GRID_SIZE do
-            if grid[i][j].ship == shipId and grid[i][j].status ~= 2 then
+            if grid[i][j].ship == shipId and grid[i][j].status == 1 then
                 sunk = false
-                break
             end
         end
     end
     if sunk then
         score.sunk = score.sunk + 1
-        sounds.sunk:play()
     end
 end
 
 function checkGameState()
-    if playerScore.hits == #SHIP_SIZES then
+    if playerScore.sunk == SHIP_COUNT then
         gameState = "won"
-    elseif computerScore.hits == #SHIP_SIZES then
+    elseif computerScore.sunk == SHIP_COUNT then
         gameState = "lost"
+    end
+end
+
+function drawScores()
+    love.graphics.print("Player Hits: " .. playerScore.hits, 10, GRID_SIZE * CELL_SIZE + 50)
+    love.graphics.print("Player Misses: " .. playerScore.misses, 10, GRID_SIZE * CELL_SIZE + 70)
+    love.graphics.print("Player Sunk: " .. playerScore.sunk, 10, GRID_SIZE * CELL_SIZE + 90)
+
+    love.graphics.print("Computer Hits: " .. computerScore.hits, GRID_SIZE * CELL_SIZE + 10, GRID_SIZE * CELL_SIZE + 50)
+    love.graphics.print("Computer Misses: " .. computerScore.misses, GRID_SIZE * CELL_SIZE + 10, GRID_SIZE * CELL_SIZE + 70)
+    love.graphics.print("Computer Sunk: " .. computerScore.sunk, GRID_SIZE * CELL_SIZE + 10, GRID_SIZE * CELL_SIZE + 90)
+end
+
+function drawAnimations()
+    local completedAnimations = {}
+
+    for _, anim in ipairs(hitAnimations) do
+        anim.time = anim.time + love.timer.getDelta()
+        if anim.time > 0.5 then
+            table.insert(completedAnimations, anim)
+        else
+            love.graphics.setColor(1, 0, 0, 1 - anim.time / 0.5)
+            local x = (anim.x - 1) * CELL_SIZE + GRID_SIZE * CELL_SIZE
+            local y = (anim.y - 1) * CELL_SIZE + 20
+            love.graphics.rectangle("fill", x, y, CELL_SIZE, CELL_SIZE)
+            love.graphics.setColor(1, 1, 1)
+        end
+    end
+
+    for _, anim in ipairs(completedAnimations) do
+        for i, activeAnim in ipairs(hitAnimations) do
+            if anim == activeAnim then
+                table.remove(hitAnimations, i)
+                break
+            end
+        end
+    end
+
+    completedAnimations = {}
+
+    for _, anim in ipairs(missAnimations) do
+        anim.time = anim.time + love.timer.getDelta()
+        if anim.time > 0.5 then
+            table.insert(completedAnimations, anim)
+        else
+            love.graphics.setColor(0, 0, 1, 1 - anim.time / 0.5)
+            local x = (anim.x - 1) * CELL_SIZE + GRID_SIZE * CELL_SIZE
+            local y = (anim.y - 1) * CELL_SIZE + 20
+            love.graphics.rectangle("fill", x, y, CELL_SIZE, CELL_SIZE)
+            love.graphics.setColor(1, 1, 1)
+        end
+    end
+
+    for _, anim in ipairs(completedAnimations) do
+        for i, activeAnim in ipairs(missAnimations) do
+            if anim == activeAnim then
+                table.remove(missAnimations, i)
+                break
+            end
+        end
     end
 end
 
@@ -269,45 +313,5 @@ function love.keypressed(key)
         resetGame()
     elseif key == "space" and gameState == "placing" then
         placingShipOrientation = 1 - placingShipOrientation
-    end
-end
-
-function drawScores()
-    love.graphics.print("Player Score", 10, GRID_SIZE * CELL_SIZE + 50)
-    love.graphics.print("Hits: " .. playerScore.hits, 10, GRID_SIZE * CELL_SIZE + 70)
-    love.graphics.print("Misses: " .. playerScore.misses, 10, GRID_SIZE * CELL_SIZE + 90)
-    love.graphics.print("Sunk: " .. playerScore.sunk, 10, GRID_SIZE * CELL_SIZE + 110)
-
-    love.graphics.print("Computer Score", GRID_SIZE * CELL_SIZE + 10, GRID_SIZE * CELL_SIZE + 50)
-    love.graphics.print("Hits: " .. computerScore.hits, GRID_SIZE * CELL_SIZE + 10, GRID_SIZE * CELL_SIZE + 70)
-    love.graphics.print("Misses: " .. computerScore.misses, GRID_SIZE * CELL_SIZE + 10, GRID_SIZE * CELL_SIZE + 90)
-    love.graphics.print("Sunk: " .. computerScore.sunk, GRID_SIZE * CELL_SIZE + 10, GRID_SIZE * CELL_SIZE + 110)
-end
-
-function drawAnimations()
-    for i, anim in ipairs(hitAnimations) do
-        anim.time = anim.time + love.timer.getDelta()
-        if anim.time > 0.5 then
-            table.remove(hitAnimations, i)
-        else
-            local x = (anim.x - 1) * CELL_SIZE + GRID_SIZE * CELL_SIZE
-            local y = (anim.y - 1) * CELL_SIZE + 20
-            love.graphics.setColor(1, 0, 0, 1 - anim.time / 0.5)
-            love.graphics.rectangle("fill", x, y, CELL_SIZE, CELL_SIZE)
-            love.graphics.setColor(1, 1, 1)
-        end
-    end
-
-    for i, anim in ipairs(missAnimations) do
-        anim.time = anim.time + love.timer.getDelta()
-        if anim.time > 0.5 then
-            table.remove(missAnimations, i)
-        else
-            local x = (anim.x - 1) * CELL_SIZE + GRID_SIZE * CELL_SIZE
-            local y = (anim.y - 1) * CELL_SIZE + 20
-            love.graphics.setColor(0, 0, 1, 1 - anim.time / 0.5)
-            love.graphics.rectangle("fill", x, y, CELL_SIZE, CELL_SIZE)
-            love.graphics.setColor(1, 1, 1)
-        end
     end
 end
